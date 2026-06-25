@@ -1,88 +1,171 @@
-import os
-import requests
 from blessed import Terminal, keyboard
-from time import sleep
-from json import dumps, loads, JSONDecodeError
-from datetime import datetime, date, timedelta
 from calendar import monthrange
-import subprocess
-import platform
-from typing import Any, Callable
 from collections import Counter
-import sys
 from colorama import just_fix_windows_console
-import tempfile
+from datetime import datetime, date, timedelta
+from json import dumps, loads, JSONDecodeError
+from os import path, environ, replace, remove, fdopen, makedirs
+from platform import system
+from requests import get, Response
+from requests.exceptions import RequestException
+from subprocess import run
+from tempfile import mkstemp
+from time import sleep
+from typing import Any, Callable
+from webbrowser import open as wbopen
 
 
 # --- PyInstaller helper function --- (start)
 def resource_path(relative_path):
     try:
-        base_path = sys._MEIPASS  # type: ignore
+        from sys import _MEIPASS  # type: ignore
+        base_path = _MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = path.abspath(".")
 
-    return os.path.join(base_path, relative_path)
+    return path.join(base_path, relative_path)
 # --- PyInstaller helper function --- (end)
 
 
 def get_app_data_dir(app_name: str = "Termdle") -> str:
-    os_name = platform.system()
-    home = os.path.expanduser("~")
+    name = system()
+    home = path.expanduser("~")
 
-    if os_name == "Windows":
+    if name == "Windows":
         # Windows: %APPDATA%\Termdle (ie. C:\Users\username\AppData\Roaming\Termdle)
-        base_path = os.environ.get("APPDATA", os.path.join(home, "AppData", "Roaming"))
-    elif os_name == "Darwin":
-        # macOS: ~/Library/Application Support/Termdle
-        base_path = os.path.join(home, "Library", "Application Support")
+        base_path = environ.get("APPDATA", path.join(home, "AppData", "Roaming"))
+    elif name == "Darwin":
+        # mac ~/Library/Application Support/Termdle
+        base_path = path.join(home, "Library", "Application Support")
     else:
-        # Linux a ostatní: ~/.local/share/Termdle
-        base_path = os.environ.get("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
+        # Linux a atní: ~/.local/share/Termdle
+        base_path = environ.get("XDG_DATA_HOME", path.join(home, ".local", "share"))
 
-    app_dir = os.path.join(base_path, app_name)
-    os.makedirs(app_dir, exist_ok=True)
+    app_dir = path.join(base_path, app_name)
+    makedirs(app_dir, exist_ok=True)
 
     return app_dir
+
+
+def check_for_update() -> tuple[tuple[int, ...], str] | None:
+    """
+    Checks GitHub releases for a new version.
+    Returns (remote_version_tuple, remote_tag_string) if update available, None otherwise.
+    """
+    url: str = "https://api.github.com/repos/w3n11/termdle/releases/latest"
+
+    try:
+        response: Response = get(url, timeout=1.5)
+        response.raise_for_status()
+        data: dict = response.json()
+
+        remote_tag: str = data.get("tag_name", "v0.0.0")
+        remote_version: tuple = tuple(int(el) for el in remote_tag.strip("v").split("."))
+
+        if remote_version > CURRENT_VERSION:
+            return remote_version, remote_tag
+
+    except (RequestException, ValueError, KeyError):
+        pass
+
+    return None
+
+
+def handle_updates(user_prefs: dict[str, Any]) -> None:
+    with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+        print(term.clear)
+        print(term.move_y(term.height // 2) + term.center("Checking for updates..."))  # type: ignore
+        update_info = check_for_update()
+
+    if update_info:
+        remote_version: tuple[int, ...] = update_info[0]
+        remote_tag: str = update_info[1]
+
+        ignored_list = user_prefs.get("ignored_update", [0, 0, 0])
+        ignored_version = tuple(ignored_list)
+
+        if remote_version > ignored_version:
+            with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+                last_width, last_height = -1, -1
+                force_redraw = True
+
+                while term.inkey(timeout=0):  # flush queued keys
+                    pass
+
+                while True:
+                    current_width, current_height = term.width, term.height
+                    if force_redraw or current_width != last_width or current_height != last_height:
+                        last_width, last_height = current_width, current_height
+                        force_redraw = False
+
+                        print(term.clear)
+                        print(term.move_y(term.height // 2 - 2) + term.center(term.color_rgb(*Colors.BLUE) + "--- UPDATE AVAILABLE ---" + term.normal))  # type: ignore
+                        print(term.move_y(term.height // 2) + term.center(f"New version {remote_tag} is available! (Current: {SEMVER_STRING})"))  # type: ignore
+                        print(term.move_y(term.height // 2 + 3) + term.center(term.dim("Enter = Continue to game | O = Open GitHub | I = Ignore this version")))  # type: ignore
+
+                    key = term.inkey(timeout=0.1)  # on resize redraw mechanism
+                    if not key:
+                        continue
+
+                    force_redraw = True
+
+                    if key.name == "KEY_ENTER":
+                        break
+                    elif key.lower() == 'o':
+                        wbopen("https://github.com/w3n11/termdle/releases/latest")
+                        break
+                    elif key.lower() == 'i':
+                        save_user_preferences(user_prefs, "ignored_update", list(remote_version))
+                        break
 
 
 # GLOBALS
 term: Terminal = Terminal()
 DATA_PATH = get_app_data_dir("Termdle")
-DATA_FILE = os.path.join(DATA_PATH, "data.json")
+DATA_FILE = path.join(DATA_PATH, "data.json")
+CURRENT_VERSION = (0, 1, 0)
+SEMVER_STRING = f"{CURRENT_VERSION[0]}.{CURRENT_VERSION[1]}.{CURRENT_VERSION[2]}"
+
+
+class Colors:
+    GREEN: tuple[int, int, int] = (83, 141, 78)
+    YELLOW: tuple[int, int, int] = (181, 159, 59)
+    GRAY: tuple[int, int, int] = (58, 58, 60)
+    UNUSED: tuple[int, int, int] = (18, 18, 19)
+    RED: tuple[int, int, int] = (213, 94, 98)
+    BLUE: tuple[int, int, int] = (113, 169, 224)
 
 
 def WORDLE_GREEN(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(83, 141, 78) + text + term.normal
+    return term.white_bold + term.on_color_rgb(*Colors.GREEN) + text + term.normal
 
 
 def WORDLE_YELLOW(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(181, 159, 59) + text + term.normal
+    return term.white_bold + term.on_color_rgb(*Colors.YELLOW) + text + term.normal
 
 
 def WORDLE_GRAY(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(58, 58, 60) + text + term.normal
+    return term.white_bold + term.on_color_rgb(*Colors.GRAY) + text + term.normal
 
 
 def WORDLE_UNUSED(text: str) -> str:  # noqa: N802
-    return term.white + term.on_color_rgb(18, 18, 19) + text + term.normal
+    return term.white + term.on_color_rgb(*Colors.UNUSED) + text + term.normal
 
 
 def WORDLE_RED(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(213, 94, 98) + text + term.normal
+    return term.white_bold + term.on_color_rgb(*Colors.RED) + text + term.normal
 
 
 def log_error(description: str, error: Exception) -> None:
-    with open(file=os.path.join(DATA_PATH, "latest_error.txt"), mode="w", encoding="utf-8") as f:
+    with open(file=path.join(DATA_PATH, "latest_error.txt"), mode="w", encoding="utf-8") as f:
         f.write(f"{description}\n\n{error}\n")
 
 
 def copy_to_clipboard(text: str) -> bool:
-    # This feature is a candidate for review,
-    # as most of it was created using AI to make it work for now.
     try:
-        os_name: str = platform.system()
-        if os_name == "Windows":
-            subprocess.run(
+        name: str = system()
+        if name == "Windows":
+            run(
                 "chcp 65001 > nul & clip",
                 input=text,
                 text=True,
@@ -90,16 +173,16 @@ def copy_to_clipboard(text: str) -> bool:
                 shell=True,
                 check=True
             )
-        elif os_name == "Darwin":  # macOS
-            subprocess.run("pbcopy", input=text, text=True, check=True)
+        elif name == "Darwin":  # macOS
+            run("pbcopy", input=text, text=True, check=True)
         else:  # Linux
             try:  # Wayland
-                subprocess.run(["wl-copy"], input=text, text=True, check=True)
+                run(["wl-copy"], input=text, text=True, check=True)
             except FileNotFoundError:
                 try:  # X11
-                    subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True, check=True)
+                    run(["xclip", "-selection", "clipboard"], input=text, text=True, check=True)
                 except FileNotFoundError:
-                    subprocess.run(["xsel", "--clipboard", "--input"], input=text, text=True, check=True)
+                    run(["xsel", "--clipboard", "--input"], input=text, text=True, check=True)
         return True
     except Exception as e:
         log_error("Copying failed", e)
@@ -174,7 +257,7 @@ def load_user_preferences() -> dict[str, Any]:
     Used ie. for remembering user choice about solving Wordle in hard mode.
     """
     data: dict[str, dict] = {}
-    if os.path.exists(DATA_FILE):
+    if path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, mode="r", encoding="utf-8") as f:
                 data = loads(f.read())
@@ -193,7 +276,7 @@ def save_user_preferences(current_preferences: dict[str, Any], key: str | None, 
         current_preferences[key] = new_value
 
     data: dict[str, dict] = {}
-    if os.path.exists(DATA_FILE):
+    if path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, mode="r", encoding="utf-8") as f:
                 data = loads(f.read())
@@ -208,7 +291,7 @@ def save_user_preferences(current_preferences: dict[str, Any], key: str | None, 
 
 def save_game(date_str: str, solution: str, guesses: list[str], is_hard_mode: bool) -> None:
     data: dict[str, dict] = {}
-    if os.path.exists(DATA_FILE):
+    if path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, mode="r", encoding="utf-8") as f:
                 data = loads(f.read())
@@ -224,23 +307,23 @@ def save_game(date_str: str, solution: str, guesses: list[str], is_hard_mode: bo
 
 
 def safe_save_json(filepath: str, data: dict) -> None:
-    dir_name = os.path.dirname(filepath)
-    fd, temp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    dir_name = path.dirname(filepath)
+    fd, temp_path = mkstemp(dir=dir_name, suffix=".tmp")
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(dumps(data, indent=4))
 
-        os.replace(temp_path, filepath)
+        replace(temp_path, filepath)
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        if path.exists(temp_path):
+            remove(temp_path)
         log_error("Atomic save failed", e)
         raise e
 
 
 def load_wordle(date_str: str) -> tuple[str, list[str], bool] | None:
     data: dict[str, dict] = {}
-    if os.path.exists(DATA_FILE):
+    if path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, mode="r", encoding="utf-8") as f:
                 data = loads(f.read())
@@ -269,6 +352,9 @@ def load_wordle(date_str: str) -> tuple[str, list[str], bool] | None:
 
 
 def download_wordle(date_str: str, max_attempts: int = 3) -> str | None:
+    headers: dict[str, str] = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     with term.fullscreen(), term.cbreak(), term.hidden_cursor():
         attempt: int = 0
         while attempt < max_attempts:
@@ -277,16 +363,16 @@ def download_wordle(date_str: str, max_attempts: int = 3) -> str | None:
                 print(term.move_y(term.height // 2))  # type: ignore
                 print(term.center(f"Downloading Wordle for {date_str}... (attempt {attempt + 1}/{max_attempts})"))
 
-                response = requests.get(f"https://www.nytimes.com/svc/wordle/v2/{date_str}.json", timeout=5)
+                response = get(f"https://www.nytimes.com/svc/wordle/v2/{date_str}.json", timeout=5, headers=headers)
                 response.raise_for_status()
                 data = response.json()
                 solution = data.get("solution")
                 if solution:
                     return solution
                 else:
-                    raise KeyError("Klíč 'solution' nenalezen v JSONu.")
+                    raise KeyError("Key 'solution' not found in JSON.")
 
-            except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+            except (RequestException, ValueError, KeyError) as e:
                 log_error(f"Network error on attempt {attempt + 1}", e)
                 attempt += 1
                 sleep(2 ** attempt)
@@ -349,7 +435,7 @@ def date_picker(current_date_str: str) -> str:
                 "Esc = Cancel | Enter = Confirm date | Ctrl+C = Exit"
             )))
 
-            key_pressed: keyboard.Keystroke = term.inkey(timeout=0.1)
+            key_pressed: keyboard.Keystroke = term.inkey(timeout=0.1)  # on resize redraw mechanism
 
             if not key_pressed:
                 continue
@@ -435,15 +521,16 @@ def print_game_status(
         current_input: str,
         message: str,
         message_is_bad_news: bool) -> None:
+
     keyboard_layout: list[str] = ["qwertzuiop", "asdfghjkl", "yxcvbnm"]
     # Super fancy print - start
     print(term.clear)
     print(term.move_y(term.height // 2 - 12) + term.center(f"--- WORDLE: {date_str} ---"))  # type: ignore
-    print(term.move_y(term.height // 2 - 11) + term.center(term.red("HARD MODE") if game_hard_mode else ""))  # type: ignore
+    print(term.move_y(term.height // 2 - 11) + term.center(term.color_rgb(*Colors.RED) + "HARD MODE" + term.normal if game_hard_mode else ""))  # type: ignore
 
     kbd_status = get_keyboard_status(solution, guesses)
     for i in range(6):
-        y_pos = (term.height // 2 - 9) + (i * 2)
+        y_pos: int = (term.height // 2 - 9) + (i * 2)
 
         if i < len(guesses):
             guess = guesses[i]
@@ -484,7 +571,7 @@ def print_game_status(
             elif char_status == "yellow":
                 formatted_row.append(WORDLE_YELLOW(btn_text))
             elif char_status == "gray":
-                formatted_row.append(term.color_rgb(58, 58, 60) + btn_text + term.normal)
+                formatted_row.append(term.color_rgb(*Colors.GRAY) + btn_text + term.normal)
             else:
                 formatted_row.append(term.white_on_black(btn_text))
 
@@ -493,12 +580,12 @@ def print_game_status(
 
     if message:
         if message_is_bad_news:
-            print(term.move_y(term.height // 2 + 8) + term.center(term.red(message)))  # type: ignore
+            print(term.move_y(term.height // 2 + 8) + term.center(term.color_rgb(*Colors.RED) + message + term.normal))  # type: ignore
         else:
-            print(term.move_y(term.height // 2 + 8) + term.center(term.dim(message)))  # type: ignore
+            print(term.move_y(term.height // 2 + 8) + term.center(term.color_rgb(*Colors.GRAY) + message + term.normal))  # type: ignore
 
     if solution in guesses:
-        print(term.move_y(term.height // 2 + 10) + term.center(term.green(f"SUCCESS | {len(guesses)}/6")))  # type: ignore
+        print(term.move_y(term.height // 2 + 10) + term.center(term.color_rgb(*Colors.GREEN) + f"SUCCESS | {len(guesses)}/6" + term.normal))  # type: ignore
     elif len(guesses) >= 6:
         print(term.move_y(term.height // 2 + 10) + term.center(term.red(f"FAIL | Solution: {solution.upper()}")))  # type: ignore
 
@@ -547,7 +634,7 @@ def play_wordle(date_str: str, solution: str, guesses: list[str], valid_words: s
                     message_is_bad_news=message_is_bad_news
                 )
 
-            key_pressed: keyboard.Keystroke = term.inkey(timeout=0.1)
+            key_pressed: keyboard.Keystroke = term.inkey(timeout=0.1)  # on resize redraw mechanism
 
             if not key_pressed:
                 continue
@@ -583,9 +670,12 @@ def play_wordle(date_str: str, solution: str, guesses: list[str], valid_words: s
             elif key_pressed.name == "KEY_LEFT" and current_day > first_day:
                 save_game(date_str, solution, guesses, game_hard_mode)
                 return "LEFT"
-            elif key_pressed.name == "KEY_RIGHT" and current_day < today:
-                save_game(date_str, solution, guesses, game_hard_mode)
-                return "RIGHT"
+            elif key_pressed.name == "KEY_RIGHT":
+                if current_day < today:
+                    save_game(date_str, solution, guesses, game_hard_mode)
+                    return "RIGHT"
+                else:
+                    force_redraw = False
 
             game_finished: bool = solution in guesses or len(guesses) >= 6
             if game_finished:
@@ -616,12 +706,15 @@ def play_wordle(date_str: str, solution: str, guesses: list[str], valid_words: s
 
 
 def main() -> None:
+    user_prefs: dict[str, Any] = load_user_preferences()
+    handle_updates(user_prefs)
+
     current_date = date.today()
     current_date_str: str = current_date.isoformat()
     valid_words = load_valid_words()
 
-    today = date.today()
-    first_day = date(2021, 6, 19)
+    today: date = date.today()
+    first_day: date = date(2021, 6, 19)
 
     while True:
         with term.fullscreen(), term.cbreak(), term.hidden_cursor():
@@ -635,7 +728,7 @@ def main() -> None:
             with term.fullscreen(), term.cbreak(), term.hidden_cursor():
                 print(term.clear)
                 print(term.move_y(term.height // 2) + term.center(term.red(f"Could not download Wordle for {current_date_str}")))  # type: ignore
-                print(term.move_y(term.height // 2 + 2) + term.center("Press ESC to choose a different date."))  # type: ignore
+                print(term.move_y(term.height // 2 + 2) + term.center("Press ESC to cho a different date."))  # type: ignore
                 while True:
                     key = term.inkey()
                     if key.name == "KEY_ESCAPE":
@@ -656,6 +749,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     just_fix_windows_console()
+
     try:
         main()
     except KeyboardInterrupt:
