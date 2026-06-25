@@ -123,7 +123,7 @@ def handle_updates(user_prefs: dict[str, Any]) -> None:
 term: Terminal = Terminal()
 DATA_PATH = get_app_data_dir("Termdle")
 DATA_FILE = path.join(DATA_PATH, "data.json")
-CURRENT_VERSION = (0, 1, 0)
+CURRENT_VERSION = (0, 2, 0)
 SEMVER_STRING = f"{CURRENT_VERSION[0]}.{CURRENT_VERSION[1]}.{CURRENT_VERSION[2]}"
 
 
