@@ -32,13 +32,13 @@ def get_app_data_dir(app_name: str = "Termdle") -> str:
     home = path.expanduser("~")
 
     if name == "Windows":
-        # Windows: %APPDATA%\Termdle (ie. C:\Users\username\AppData\Roaming\Termdle)
+        # Windows: %APPDATA%\Termdle
         base_path = environ.get("APPDATA", path.join(home, "AppData", "Roaming"))
     elif name == "Darwin":
-        # mac ~/Library/Application Support/Termdle
+        # macOS ~/Library/Application Support/Termdle
         base_path = path.join(home, "Library", "Application Support")
     else:
-        # Linux a atní: ~/.local/share/Termdle
+        # Linux: ~/.local/share/Termdle
         base_path = environ.get("XDG_DATA_HOME", path.join(home, ".local", "share"))
 
     app_dir = path.join(base_path, app_name)
@@ -72,6 +72,9 @@ def check_for_update() -> tuple[tuple[int, ...], str] | None:
 
 
 def handle_updates(user_prefs: dict[str, Any]) -> None:
+    """
+    Tries to detect an update if available. Offers to update, dismiss or ignore that version to user.
+    """
     with term.fullscreen(), term.cbreak(), term.hidden_cursor():
         print(term.clear)
         print(term.move_y(term.height // 2) + term.center("Checking for updates..."))  # type: ignore
@@ -99,7 +102,7 @@ def handle_updates(user_prefs: dict[str, Any]) -> None:
                         force_redraw = False
 
                         print(term.clear)
-                        print(term.move_y(term.height // 2 - 2) + term.center(term.color_rgb(*Colors.BLUE) + "--- UPDATE AVAILABLE ---" + term.normal))  # type: ignore
+                        print(term.move_y(term.height // 2 - 2) + term.center(Color.Fore.blue("--- UPDATE AVAILABLE ---")))  # type: ignore
                         print(term.move_y(term.height // 2) + term.center(f"New version {remote_tag} is available! (Current: {SEMVER_STRING})"))  # type: ignore
                         print(term.move_y(term.height // 2 + 3) + term.center(term.dim("Enter = Continue to game | O = Open GitHub | I = Ignore this version")))  # type: ignore
 
@@ -120,19 +123,22 @@ def handle_updates(user_prefs: dict[str, Any]) -> None:
 
 
 def set_terminal_title(title: str):
+    """
+    Sets window terminal title to Termdle using ANSI esc. seq.
+    """
     print(f"\033]0;{title}\007", end="", flush=True)
 
 
-# GLOBALS
+# GLOBALS - I know, it's not pretty...
 term: Terminal = Terminal()
 set_terminal_title("Termdle")
 DATA_PATH = get_app_data_dir("Termdle")
 DATA_FILE = path.join(DATA_PATH, "data.json")
-CURRENT_VERSION = (0, 2, 0)
+CURRENT_VERSION = (0, 2, 1)
 SEMVER_STRING = f"{CURRENT_VERSION[0]}.{CURRENT_VERSION[1]}.{CURRENT_VERSION[2]}"
 
 
-class Colors:
+class Color:
     GREEN: tuple[int, int, int] = (83, 141, 78)
     YELLOW: tuple[int, int, int] = (181, 159, 59)
     GRAY: tuple[int, int, int] = (58, 58, 60)
@@ -140,28 +146,105 @@ class Colors:
     RED: tuple[int, int, int] = (213, 94, 98)
     BLUE: tuple[int, int, int] = (113, 169, 224)
 
+    class Back:
+        @staticmethod
+        def green(text: str) -> str:  # noqa: N802
+            """
+            Returns text on a green colored background.
 
-def WORDLE_GREEN(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(*Colors.GREEN) + text + term.normal
+            Used for:
+            - correctly guessed letters
+            """
+            return term.white_bold + term.on_color_rgb(*Color.GREEN) + text + term.normal
 
+        @staticmethod
+        def yellow(text: str) -> str:  # noqa: N802
+            """
+            Returns text on a yellow colored background.
 
-def WORDLE_YELLOW(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(*Colors.YELLOW) + text + term.normal
+            Used for:
+            - misplaced letters
+            """
+            return term.white_bold + term.on_color_rgb(*Color.YELLOW) + text + term.normal
 
+        @staticmethod
+        def gray(text: str) -> str:  # noqa: N802
+            """
+            Returns text on a gray colored background.
 
-def WORDLE_GRAY(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(*Colors.GRAY) + text + term.normal
+            Used for:
+            - incorrect letters
+            """
+            return term.white_bold + term.on_color_rgb(*Color.GRAY) + text + term.normal
 
+        @staticmethod
+        def dark_gray(text: str) -> str:  # noqa: N802
+            """
+            Returns text on a dark gray colored background.
 
-def WORDLE_UNUSED(text: str) -> str:  # noqa: N802
-    return term.white + term.on_color_rgb(*Colors.UNUSED) + text + term.normal
+            Used for:
+            - yet unused rows
+            """
+            return term.white + term.on_color_rgb(*Color.UNUSED) + text + term.normal
 
+        @staticmethod
+        def red(text: str) -> str:  # noqa: N802
+            """
+            Returns text on a red colored background.
 
-def WORDLE_RED(text: str) -> str:  # noqa: N802
-    return term.white_bold + term.on_color_rgb(*Colors.RED) + text + term.normal
+            Used for:
+            - already used and incorrect letter in hard mode
+            """
+            return term.white_bold + term.on_color_rgb(*Color.RED) + text + term.normal
+
+    class Fore:
+        @staticmethod
+        def green(text: str) -> str:  # noqa: N802
+            """
+            Returns a green colored text.
+
+            Used for:
+            - success message
+            """
+            return term.white_bold + term.color_rgb(*Color.GREEN) + text + term.normal
+
+        @staticmethod
+        def gray(text: str) -> str:  # noqa: N802
+            """
+            Returns a gray colored text.
+
+            Used for:
+            - already used and incorrect letters on the keyboard layout
+            - not bad info message
+            """
+            return term.white_bold + term.color_rgb(*Color.GRAY) + text + term.normal
+
+        @staticmethod
+        def red(text: str) -> str:  # noqa: N802
+            """
+            Returns a red colored text.
+
+            Used for:
+            - hard mode indication message
+            - bad info message
+            """
+            return term.white_bold + term.color_rgb(*Color.RED) + text + term.normal
+
+        @staticmethod
+        def blue(text: str) -> str:  # noqa: N802
+            """
+            Returns a blue colored text.
+
+            Used for:
+            - update message
+            """
+            return term.white_bold + term.color_rgb(*Color.GREEN) + text + term.normal
 
 
 def log_error(description: str, error: Exception) -> None:
+    """
+    Returns green colored text.
+    """
     with open(file=path.join(DATA_PATH, "latest_error.txt"), mode="w", encoding="utf-8") as f:
         f.write(f"{description}\n\n{error}\n")
 
@@ -206,10 +289,10 @@ def validate_hard_mode(guess: str, solution: str, guesses: list[str]) -> tuple[b
         current_guess_counts = Counter()
 
         for i, (char, col) in enumerate(zip(prev_guess, colors)):
-            if col == WORDLE_GREEN:
+            if col == Color.Back.green:
                 known_greens[i] = char
                 current_guess_counts[char] += 1
-            elif col == WORDLE_YELLOW:
+            elif col == Color.Back.yellow:
                 current_guess_counts[char] += 1
 
         for char, count in current_guess_counts.items():
@@ -245,9 +328,9 @@ def generate_share_text(date_str: str, solution: str, guesses: list[str], hard_m
         colors = evaluate_guess(guess, solution)
         row_emoji = ""
         for color in colors:
-            if color == WORDLE_GREEN:
+            if color == Color.Back.green:
                 row_emoji += "🟩"
-            elif color == WORDLE_YELLOW:
+            elif color == Color.Back.yellow:
                 row_emoji += "🟨"
             else:
                 row_emoji += "⬛"
@@ -483,18 +566,18 @@ def load_valid_words() -> set[str]:
 
 
 def evaluate_guess(guess: str, solution: str) -> list[Callable]:
-    colors: list[Callable] = [WORDLE_GRAY] * 5
+    colors: list[Callable] = [Color.Back.gray] * 5
     sol_letters: list[str | None] = list(solution)
     guess_letters: list[str] = list(guess)
 
     for i in range(5):
         if guess_letters[i] == sol_letters[i]:
-            colors[i] = WORDLE_GREEN
+            colors[i] = Color.Back.green
             sol_letters[i] = None
 
     for i in range(5):
-        if colors[i] != WORDLE_GREEN and guess_letters[i] in sol_letters:
-            colors[i] = WORDLE_YELLOW
+        if colors[i] != Color.Back.green and guess_letters[i] in sol_letters:
+            colors[i] = Color.Back.yellow
             sol_letters[sol_letters.index(guess_letters[i])] = None
 
     return colors
@@ -508,11 +591,11 @@ def get_keyboard_status(solution: str, guesses: list[str]) -> dict[str, str]:
         for i, letter in enumerate(guess):
             color = colors[i]
 
-            if color == WORDLE_GREEN:
+            if color == Color.Back.green:
                 status[letter] = "green"
-            elif color == WORDLE_YELLOW and status[letter] != "green":
+            elif color == Color.Back.yellow and status[letter] != "green":
                 status[letter] = "yellow"
-            elif color == WORDLE_GRAY and status[letter] not in ("green", "yellow"):
+            elif color == Color.Back.gray and status[letter] not in ("green", "yellow"):
                 status[letter] = "gray"
 
     return status
@@ -531,7 +614,7 @@ def print_game_status(
     # Super fancy print - start
     print(term.clear)
     print(term.move_y(term.height // 2 - 12) + term.center(f"--- WORDLE: {date_str} ---"))  # type: ignore
-    print(term.move_y(term.height // 2 - 11) + term.center(term.color_rgb(*Colors.RED) + "HARD MODE" + term.normal if game_hard_mode else ""))  # type: ignore
+    print(term.move_y(term.height // 2 - 11) + term.center(Color.Fore.red("HARD MODE") if game_hard_mode else ""))  # type: ignore
 
     kbd_status = get_keyboard_status(solution, guesses)
     for i in range(6):
@@ -553,14 +636,14 @@ def print_game_status(
 
             for char in display_word:
                 if char != "_" and game_hard_mode and kbd_status.get(char.lower()) == "gray":
-                    formatted_chars.append(WORDLE_RED(f" {char} "))
+                    formatted_chars.append(Color.Back.red(f" {char} "))
                 else:
-                    formatted_chars.append(WORDLE_GRAY(f" {char} "))
+                    formatted_chars.append(Color.Back.gray(f" {char} "))
 
             print(term.move_y(y_pos) + term.center(" ".join(formatted_chars)))  # type: ignore
 
         else:
-            empty_chars = [WORDLE_UNUSED("   ") for _ in range(5)]
+            empty_chars = [Color.Back.dark_gray("   ") for _ in range(5)]
             print(term.move_y(y_pos) + term.center(" ".join(empty_chars)))  # type: ignore
 
     kbd_start_y = (term.height // 2) + 4
@@ -572,11 +655,11 @@ def print_game_status(
             btn_text = " " + char.upper() + " "
 
             if char_status == "green":
-                formatted_row.append(WORDLE_GREEN(btn_text))
+                formatted_row.append(Color.Back.green(btn_text))
             elif char_status == "yellow":
-                formatted_row.append(WORDLE_YELLOW(btn_text))
+                formatted_row.append(Color.Back.yellow(btn_text))
             elif char_status == "gray":
-                formatted_row.append(term.color_rgb(*Colors.GRAY) + btn_text + term.normal)
+                formatted_row.append(Color.Fore.gray(btn_text))
             else:
                 formatted_row.append(term.white_on_black(btn_text))
 
@@ -585,14 +668,14 @@ def print_game_status(
 
     if message:
         if message_is_bad_news:
-            print(term.move_y(term.height // 2 + 8) + term.center(term.color_rgb(*Colors.RED) + message + term.normal))  # type: ignore
+            print(term.move_y(term.height // 2 + 8) + term.center(Color.Fore.red(message)))  # type: ignore
         else:
-            print(term.move_y(term.height // 2 + 8) + term.center(term.color_rgb(*Colors.GRAY) + message + term.normal))  # type: ignore
+            print(term.move_y(term.height // 2 + 8) + term.center(Color.Fore.gray(message)))  # type: ignore
 
     if solution in guesses:
-        print(term.move_y(term.height // 2 + 10) + term.center(term.color_rgb(*Colors.GREEN) + f"SUCCESS | {len(guesses)}/6" + term.normal))  # type: ignore
+        print(term.move_y(term.height // 2 + 10) + term.center(Color.Fore.green(f"SUCCESS | {len(guesses)}/6")))  # type: ignore
     elif len(guesses) >= 6:
-        print(term.move_y(term.height // 2 + 10) + term.center(term.red(f"FAIL | Solution: {solution.upper()}")))  # type: ignore
+        print(term.move_y(term.height // 2 + 10) + term.center(Color.Fore.red(f"FAIL | Solution: {solution.upper()}")))  # type: ignore
 
     game_finished: bool = solution in guesses or len(guesses) >= 6
     if game_finished:
