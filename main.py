@@ -119,8 +119,13 @@ def handle_updates(user_prefs: dict[str, Any]) -> None:
                         break
 
 
+def set_terminal_title(title: str):
+    print(f"\033]0;{title}\007", end="", flush=True)
+
+
 # GLOBALS
 term: Terminal = Terminal()
+set_terminal_title("Termdle")
 DATA_PATH = get_app_data_dir("Termdle")
 DATA_FILE = path.join(DATA_PATH, "data.json")
 CURRENT_VERSION = (0, 2, 0)
