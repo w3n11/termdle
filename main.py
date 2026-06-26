@@ -139,6 +139,11 @@ SEMVER_STRING = f"{CURRENT_VERSION[0]}.{CURRENT_VERSION[1]}.{CURRENT_VERSION[2]}
 
 
 class Color:
+    """
+    Colors at one place, as well as Fore and Back subclasses.
+
+    _Inspired by colorama, but sticked to the blessed lib._
+    """
     GREEN: tuple[int, int, int] = (83, 141, 78)
     YELLOW: tuple[int, int, int] = (181, 159, 59)
     GRAY: tuple[int, int, int] = (58, 58, 60)
@@ -243,13 +248,17 @@ class Color:
 
 def log_error(description: str, error: Exception) -> None:
     """
-    Returns green colored text.
+    Writes the error to %APPDATA%/Termdle/latest_error.txt
     """
     with open(file=path.join(DATA_PATH, "latest_error.txt"), mode="w", encoding="utf-8") as f:
         f.write(f"{description}\n\n{error}\n")
 
 
 def copy_to_clipboard(text: str) -> bool:
+    """
+    Copies text to the clipboard. Returns True if successful, False otherwise.
+    """
+
     try:
         name: str = system()
         if name == "Windows":
@@ -278,6 +287,16 @@ def copy_to_clipboard(text: str) -> bool:
 
 
 def validate_hard_mode(guess: str, solution: str, guesses: list[str]) -> tuple[bool, str]:
+    """
+    Validates if guess is valid according to hard mode rules:
+    - You must reuse all green letters at the same spots
+    - You must reuse all yellow letters
+
+    Returns tuple:
+    - (True, "") if guess is valid
+    - (False, <reason>) if guess is not valid, <reason> being the reason why the guess is not \
+        valid according to hard mode
+    """
     if not guesses:
         return True, ""
 
@@ -315,7 +334,9 @@ def validate_hard_mode(guess: str, solution: str, guesses: list[str]) -> tuple[b
 
 
 def generate_share_text(date_str: str, solution: str, guesses: list[str], hard_mode: bool) -> str:
-    """Generates a standard Wordle result to share via plaintext methods."""
+    """
+    Generates a standard Wordle result to share via plaintext methods.
+    """
     start_date: date = date(2021, 6, 19)
     current_day: date = date.fromisoformat(date_str)
     wordle_number: int = (current_day - start_date).days
@@ -342,7 +363,7 @@ def generate_share_text(date_str: str, solution: str, guesses: list[str], hard_m
 def load_user_preferences() -> dict[str, Any]:
     """
     Loads or creates empty user preference dict in data.json.
-    Used ie. for remembering user choice about solving Wordle in hard mode.
+    Used ie. for remembering user choice about solving Wordle in hard mode or ignored update version.
     """
     data: dict[str, dict] = {}
     if path.exists(DATA_FILE):
@@ -360,6 +381,9 @@ def load_user_preferences() -> dict[str, Any]:
 
 
 def save_user_preferences(current_preferences: dict[str, Any], key: str | None, new_value: Any) -> None:
+    """
+    Saves a new value for user preference into the %APPDATA%/Termdle/data.json file.
+    """
     if key:
         current_preferences[key] = new_value
 
@@ -378,6 +402,11 @@ def save_user_preferences(current_preferences: dict[str, Any], key: str | None, 
 
 
 def save_game(date_str: str, solution: str, guesses: list[str], is_hard_mode: bool) -> None:
+    """
+    Saves the game.
+
+    OPTIMIZE caching saves and save them at once when closing the game.
+    """
     data: dict[str, dict] = {}
     if path.exists(DATA_FILE):
         try:
@@ -395,6 +424,9 @@ def save_game(date_str: str, solution: str, guesses: list[str], is_hard_mode: bo
 
 
 def safe_save_json(filepath: str, data: dict) -> None:
+    """
+    Saves the file safely by creating a tempfile.
+    """
     dir_name = path.dirname(filepath)
     fd, temp_path = mkstemp(dir=dir_name, suffix=".tmp")
     try:
@@ -410,6 +442,11 @@ def safe_save_json(filepath: str, data: dict) -> None:
 
 
 def load_wordle(date_str: str) -> tuple[str, list[str], bool] | None:
+    """
+    Loads the data for a specific date.
+    OPTIMIZE loading from file at once, then accessing the dict instead. \
+        Must be done at once with optimization of save_game function.
+    """
     data: dict[str, dict] = {}
     if path.exists(DATA_FILE):
         try:
@@ -440,6 +477,12 @@ def load_wordle(date_str: str) -> tuple[str, list[str], bool] | None:
 
 
 def download_wordle(date_str: str, max_attempts: int = 3) -> str | None:
+    """
+    Downloads the Wordle for a specific date from not-public NYT's API: \
+        `https://www.nytimes.com/svc/wordle/v2/{date_str}.json`
+
+    **WARNING** Could stop working anytime - it is NOT an official public API.
+    """
     headers: dict[str, str] = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
