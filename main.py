@@ -427,18 +427,18 @@ def date_picker(current_date_str: str) -> str:
                 last_width, last_height = current_width, current_height
                 force_redraw = False
 
-            print(term.clear)
-            print(term.move_y(term.height // 2 - 2))  # type: ignore
+                print(term.clear)
+                print(term.move_y(term.height // 2 - 2))  # type: ignore
 
-            y_str = term.black_on_white(f"{year:04d}") if focused_field == 0 else f"{year:04d}"
-            m_str = term.black_on_white(f"{month:02d}") if focused_field == 1 else f"{month:02d}"
-            d_str = term.black_on_white(f"{day:02d}") if focused_field == 2 else f"{day:02d}"
+                y_str = term.black_on_white(f"{year:04d}") if focused_field == 0 else f"{year:04d}"
+                m_str = term.black_on_white(f"{month:02d}") if focused_field == 1 else f"{month:02d}"
+                d_str = term.black_on_white(f"{day:02d}") if focused_field == 2 else f"{day:02d}"
 
-            date_display = f"{y_str} - {m_str} - {d_str}"
-            print(term.move_y(term.height // 2) + term.center(date_display))  # type: ignore
-            print(term.move_y(term.height // 2 + 3) + term.center(term.dim(  # type: ignore
-                "Esc = Cancel | Enter = Confirm date | Ctrl+C = Exit"
-            )))
+                date_display = f"{y_str} - {m_str} - {d_str}"
+                print(term.move_y(term.height // 2) + term.center(date_display))  # type: ignore
+                print(term.move_y(term.height // 2 + 3) + term.center(term.dim(  # type: ignore
+                    "Esc = Cancel | Enter = Confirm date | Ctrl+C = Exit"
+                )))
 
             key_pressed: keyboard.Keystroke = term.inkey(timeout=0.1)  # on resize redraw mechanism
 
